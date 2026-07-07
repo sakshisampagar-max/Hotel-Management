@@ -1,314 +1,136 @@
-// File Name: backend/server/index.js
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const cors = require('cors');
+const path = require('path');
 
-// ================================
-// Import Required Packages
-// ================================
-const express = require("express");
-const cors = require("cors");
-const Database = require("better-sqlite3");
-
-// Create Express App
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
-// ================================
 // Middleware
-// ================================
 app.use(cors());
 app.use(express.json());
 
-// ================================
-// Connect to SQLite Database
-// ================================
-const db = new Database("data.db");
+// Initialize SQLite database
+const dbPath = path.resolve(__dirname, 'hotel.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('Error opening database:', err.message);
+  } else {
+    console.log('Connected to SQLite database.');
+    initializeDatabase();
+  }
+});
 
-// ================================
-// Create rooms table if not exists
-// ================================
-db.exec(`
-CREATE TABLE IF NOT EXISTS rooms (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guest_name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    phone TEXT,
-    room_number TEXT NOT NULL,
-    room_type TEXT NOT NULL,
-    check_in TEXT NOT NULL,
-    check_out TEXT NOT NULL,
-    status TEXT DEFAULT 'Booked',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-`);
+function initializeDatabase() {
+  db.serialize(() => {
+    // Rooms Table
+    db.run(`CREATE TABLE IF NOT EXISTS rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_number TEXT UNIQUE NOT NULL,
+      type TEXT NOT NULL,
+      price_per_night REAL NOT NULL,
+      status TEXT DEFAULT 'Available'
+    )`);
 
-console.log("Database Connected");
+    // Guests Table
+    db.run(`CREATE TABLE IF NOT EXISTS guests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT
+    )`);
 
-// ==========================================================
-// POST /rooms
-// Create Booking
-// ==========================================================
-app.post("/rooms", (req, res) => {
+    // Bookings Table
+    db.run(`CREATE TABLE IF NOT EXISTS bookings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id INTEGER,
+      guest_id INTEGER,
+      check_in_date TEXT NOT NULL,
+      check_out_date TEXT NOT NULL,
+      total_price REAL NOT NULL,
+      FOREIGN KEY(room_id) REFERENCES rooms(id),
+      FOREIGN KEY(guest_id) REFERENCES guests(id)
+    )`);
 
-    const {
-        guest_name,
-        email,
-        phone,
-        room_number,
-        room_type,
-        check_in,
-        check_out
-    } = req.body;
-
-    // Validation
-    if (
-        !guest_name ||
-        !email ||
-        !room_number ||
-        !room_type ||
-        !check_in ||
-        !check_out
-    ) {
-        return res.status(400).json({
-            message: "Please fill all required fields."
-        });
-    }
-
-    // Check duplicate email
-    const emailExists = db
-        .prepare("SELECT * FROM rooms WHERE email=?")
-        .get(email);
-
-    if (emailExists) {
-        return res.status(409).json({
-            message: "Email already exists."
-        });
-    }
-
-    // Insert Booking
-    const insert = db.prepare(`
-        INSERT INTO rooms
-        (
-            guest_name,
-            email,
-            phone,
-            room_number,
-            room_type,
-            check_in,
-            check_out
-        )
-        VALUES
-        (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = insert.run(
-        guest_name,
-        email,
-        phone || "",
-        room_number,
-        room_type,
-        check_in,
-        check_out
-    );
-
-    res.json({
-        message: "Room booked successfully.",
-        id: result.lastInsertRowid
+    // Insert Seed Data if empty
+    db.get("SELECT COUNT(*) as count FROM rooms", [], (err, row) => {
+      if (row && row.count === 0) {
+        const stmt = db.prepare("INSERT INTO rooms (room_number, type, price_per_night, status) VALUES (?, ?, ?, ?)");
+        stmt.run("101", "Standard", 80.00, "Available");
+        stmt.run("102", "Deluxe", 150.00, "Available");
+        stmt.run("201", "Suite", 250.00, "Occupied");
+        stmt.finalize();
+        console.log("Seed data injected.");
+      }
     });
+  });
+}
 
+// --- API ROUTES ---
+
+// Get all rooms
+app.get('/api/rooms', (req, res) => {
+  db.all("SELECT * FROM rooms", [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
 });
 
-// ==========================================================
-// GET /rooms
-// Read All Bookings
-// Supports:
-// page
-// limit
-// search
-// ==========================================================
-app.get("/rooms", (req, res) => {
-
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 5;
-    const search = req.query.search || "";
-
-    const offset = (page - 1) * limit;
-
-    let where = "";
-    let params = [];
-
-    if (search.trim() !== "") {
-
-        where = `
-        WHERE
-        LOWER(guest_name) LIKE ?
-        OR LOWER(room_number) LIKE ?
-        OR LOWER(room_type) LIKE ?
-        `;
-
-        const keyword = `%${search.toLowerCase()}%`;
-
-        params = [keyword, keyword, keyword];
-    }
-
-    // Total Count
-    const total = db
-        .prepare(`SELECT COUNT(*) AS total FROM rooms ${where}`)
-        .get(...params).total;
-
-    // Fetch Data
-    const bookings = db.prepare(`
-        SELECT *
-        FROM rooms
-        ${where}
-        ORDER BY id DESC
-        LIMIT ?
-        OFFSET ?
-    `).all(...params, limit, offset);
-
-    res.json({
-        data: bookings,
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit)
-    });
-
+// Update room status
+app.put('/api/rooms/:id', (req, res) => {
+  const { status } = req.body;
+  db.run("UPDATE rooms SET status = ? WHERE id = ?", [status, req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ updated: this.changes });
+  });
 });
 
-// ==========================================================
-// GET /rooms/:id
-// Get Single Booking
-// ==========================================================
-app.get("/rooms/:id", (req, res) => {
-
-    const booking = db
-        .prepare("SELECT * FROM rooms WHERE id=?")
-        .get(req.params.id);
-
-    if (!booking) {
-        return res.status(404).json({
-            message: "Booking not found."
-        });
-    }
-
-    res.json(booking);
-
+// Get all bookings with details
+app.get('/api/bookings', (req, res) => {
+  const query = `
+    SELECT b.id, r.room_number, r.type, g.name as guest_name, b.check_in_date, b.check_out_date, b.total_price 
+    FROM bookings b
+    JOIN rooms r ON b.room_id = r.id
+    JOIN guests g ON b.guest_id = g.id
+  `;
+  db.all(query, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
 });
 
-// ==========================================================
-// PUT /rooms/:id
-// Update Booking
-// ==========================================================
-app.put("/rooms/:id", (req, res) => {
+// Create a booking
+app.post('/api/bookings', (req, res) => {
+  const { room_id, guest_name, guest_email, guest_phone, check_in_date, check_out_date, total_price } = req.body;
 
-    const id = req.params.id;
+  db.serialize(() => {
+    // 1. Insert or find guest
+    db.run("INSERT OR IGNORE INTO guests (name, email, phone) VALUES (?, ?, ?)", [guest_name, guest_email, guest_phone], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
 
-    const booking = db
-        .prepare("SELECT * FROM rooms WHERE id=?")
-        .get(id);
+      db.get("SELECT id FROM guests WHERE email = ?", [guest_email], (err, guestRow) => {
+        if (err || !guestRow) return res.status(500).json({ error: "Failed to resolve guest." });
+        const guest_id = guestRow.id;
 
-    if (!booking) {
-        return res.status(404).json({
-            message: "Booking not found."
-        });
-    }
+        // 2. Create booking
+        db.run(
+          "INSERT INTO bookings (room_id, guest_id, check_in_date, check_out_date, total_price) VALUES (?, ?, ?, ?, ?)",
+          [room_id, guest_id, check_in_date, check_out_date, total_price],
+          function(err) {
+            if (err) return res.status(500).json({ error: err.message });
 
-    const {
-        guest_name,
-        email,
-        phone,
-        room_number,
-        room_type,
-        check_in,
-        check_out,
-        status
-    } = req.body;
-
-    // Check duplicate email
-    if (email) {
-
-        const duplicate = db.prepare(`
-            SELECT *
-            FROM rooms
-            WHERE email=?
-            AND id<>?
-        `).get(email, id);
-
-        if (duplicate) {
-            return res.status(409).json({
-                message: "Email already exists."
+            // 3. Mark room as occupied
+            db.run("UPDATE rooms SET status = 'Occupied' WHERE id = ?", [room_id], (err) => {
+              if (err) return res.status(500).json({ error: err.message });
+              res.status(201).json({ message: "Booking successful!", bookingId: this.lastID });
             });
-        }
-    }
-
-    db.prepare(`
-        UPDATE rooms
-        SET
-        guest_name=?,
-        email=?,
-        phone=?,
-        room_number=?,
-        room_type=?,
-        check_in=?,
-        check_out=?,
-        status=?
-        WHERE id=?
-    `).run(
-        guest_name || booking.guest_name,
-        email || booking.email,
-        phone || booking.phone,
-        room_number || booking.room_number,
-        room_type || booking.room_type,
-        check_in || booking.check_in,
-        check_out || booking.check_out,
-        status || booking.status,
-        id
-    );
-
-    res.json({
-        message: "Booking updated successfully."
+          }
+        );
+      });
     });
-
+  });
 });
 
-// ==========================================================
-// DELETE /rooms/:id
-// Delete Booking
-// ==========================================================
-app.delete("/rooms/:id", (req, res) => {
-
-    const booking = db
-        .prepare("SELECT * FROM rooms WHERE id=?")
-        .get(req.params.id);
-
-    if (!booking) {
-        return res.status(404).json({
-            message: "Booking not found."
-        });
-    }
-
-    db.prepare("DELETE FROM rooms WHERE id=?")
-        .run(req.params.id);
-
-    res.json({
-        message: "Booking deleted successfully."
-    });
-
-});
-
-// ==========================================================
-// Default Route
-// ==========================================================
-app.get("/", (req, res) => {
-
-    res.send("Hotel Management REST API Running");
-
-});
-
-// ==========================================================
-// Start Server
-// ==========================================================
 app.listen(PORT, () => {
-
-    console.log(`Server running on http://localhost:${PORT}`);
-
+  console.log(`Server running on http://localhost:${PORT}`);
 });
