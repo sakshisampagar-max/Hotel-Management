@@ -1,0 +1,186 @@
+// File Name: postman/Hotel-Management-API.postman_collection.json
+
+{
+  "info": {
+    "_postman_id": "b8b2e1c2-4f56-4d55-9c2f-hotel-management-api",
+    "name": "Hotel Management API",
+    "description": "Postman Collection for Hotel Management REST API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "booking_id",
+      "value": ""
+    }
+  ],
+
+  "item": [
+
+    {
+      "name": "Create Booking (Success)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/rooms",
+          "host": ["{{base_url}}"],
+          "path": ["rooms"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"guest_name\":\"John Doe\",\n  \"email\":\"john@example.com\",\n  \"phone\":\"9876543210\",\n  \"room_number\":\"101\",\n  \"room_type\":\"Deluxe\",\n  \"check_in\":\"2026-07-10\",\n  \"check_out\":\"2026-07-12\"\n}"
+        }
+      }
+    },
+
+    {
+      "name": "Create Duplicate Email (409)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/rooms",
+          "host": ["{{base_url}}"],
+          "path": ["rooms"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"guest_name\":\"John Duplicate\",\n  \"email\":\"john@example.com\",\n  \"phone\":\"9999999999\",\n  \"room_number\":\"102\",\n  \"room_type\":\"Suite\",\n  \"check_in\":\"2026-07-15\",\n  \"check_out\":\"2026-07-18\"\n}"
+        }
+      }
+    },
+
+    {
+      "name": "Create Missing Field (400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/rooms",
+          "host": ["{{base_url}}"],
+          "path": ["rooms"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"guest_name\":\"Only Name\"\n}"
+        }
+      }
+    },
+
+    {
+      "name": "Read All Bookings",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/rooms?page=1&limit=5",
+          "host": ["{{base_url}}"],
+          "path": ["rooms"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "name": "Search Booking",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/rooms?search=Deluxe",
+          "host": ["{{base_url}}"],
+          "path": ["rooms"],
+          "query": [
+            {
+              "key": "search",
+              "value": "Deluxe"
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "name": "Read Booking By ID",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/rooms/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": [
+            "rooms",
+            "{{booking_id}}"
+          ]
+        }
+      }
+    },
+
+    {
+      "name": "Update Booking",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/rooms/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": [
+            "rooms",
+            "{{booking_id}}"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"guest_name\":\"Updated Guest\",\n  \"email\":\"updated@example.com\",\n  \"phone\":\"8888888888\",\n  \"room_number\":\"201\",\n  \"room_type\":\"Suite\",\n  \"check_in\":\"2026-07-20\",\n  \"check_out\":\"2026-07-25\",\n  \"status\":\"Checked In\"\n}"
+        }
+      }
+    },
+
+    {
+      "name": "Delete Booking",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{base_url}}/rooms/{{booking_id}}",
+          "host": ["{{base_url}}"],
+          "path": [
+            "rooms",
+            "{{booking_id}}"
+          ]
+        }
+      }
+    }
+
+  ]
+}
